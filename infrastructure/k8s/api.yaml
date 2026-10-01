@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: clinic-api }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: clinic-api } }
+  template:
+    metadata: { labels: { app: clinic-api } }
+    spec:
+      containers:
+        - name: api
+          image: REGION-docker.pkg.dev/PROJECT/clinic/api:RELEASE
+          ports: [{ containerPort: 3000 }]
+          envFrom: [{ configMapRef: { name: clinic-api-config } }]
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: OTP_DELIVERY
+              value: twilio
+            - name: MONGODB_URI
+              valueFrom: { secretKeyRef: { name: clinic-api-secrets, key: mongodb-uri } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: clinic-api-secrets, key: jwt-secret } }
+            - name: TWILIO_ACCOUNT_SID
+              valueFrom: { secretKeyRef: { name: clinic-api-secrets, key: twilio-account-sid } }
+            - name: TWILIO_AUTH_TOKEN
+              valueFrom: { secretKeyRef: { name: clinic-api-secrets, key: twilio-auth-token } }
+            - name: TWILIO_FROM_NUMBER
+              valueFrom: { secretKeyRef: { name: clinic-api-secrets, key: twilio-from-number } }
+            - name: TOTP_SECRETS
+              valueFrom: { secretKeyRef: { name: clinic-api-secrets, key: totp-secrets } }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 1000m, memory: 768Mi }
+          readinessProbe: { httpGet: { path: /health/ready, port: 3000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: 3000 }, initialDelaySeconds: 15, periodSeconds: 20 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: clinic-api }
+spec:
+  selector: { app: clinic-api }
+  ports: [{ port: 3000, targetPort: 3000 }]

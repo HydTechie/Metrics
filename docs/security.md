@@ -1,0 +1,13 @@
+# Security design
+
+## Authentication and authorization
+
+Staff accounts and roles come from the server-side `STAFF_USERS` allowlist; client-submitted roles are never trusted. Development can use `OTP_DELIVERY=mock`, which returns the code in the GraphQL response and logs it for local testing, and completes sign-in after that code. Production requires both a Twilio SMS OTP and a TOTP code from an authenticator app, using a per-staff seed in `TOTP_SECRETS`. SMS codes expire after five minutes, are single-use, allow at most five attempts, and can be requested once per minute per phone. The second-stage challenge expires after five minutes; authenticator codes allow at most five attempts and accepted time counters cannot be replayed. Keep staff role mappings, TOTP seeds, and SMS credentials in secret storage, never source control or ConfigMaps.
+
+This is passwordless two-step verification using separate possession codes. Because both codes are possession-based, deployments requiring two independent factor classes should add a WebAuthn/passkey flow with local user verification rather than treating SMS plus TOTP as equivalent to password plus MFA.
+
+The backend issues one-hour HS256 bearer tokens only after all required steps succeed, using `JWT_SECRET`. Use a unique, high-entropy secret in every environment. Mock delivery is disabled when `NODE_ENV=production`; production login requires Twilio and TOTP configuration. For deployments that use an identity provider instead, validate issuer, audience, expiry, and approved algorithms against its published JWKS.
+
+## Data and secrets
+
+Use only fictional data. Keep JWT secrets, Mongo credentials, Kafka credentials, TOTP seeds, and Twilio credentials out of source control. Development settings load from `.env.development`; production settings are injected through Kubernetes ConfigMaps and Secret references. GitHub Actions release builds require only non-secret environment variables and Workload Identity Federation; application secrets are not build arguments and must be supplied at runtime. The manifests reference `clinic-api-secrets`, which must be connected to Secret Manager through Workload Identity before deployment. Mongo uses a root account only for administration and a separate `readWrite` account scoped to `clinic`; production `MONGODB_URI` is stored as a Secret. Use TLS for browser/API and service connections, least-privilege database and Kafka identities, GraphQL depth/complexity limits, request throttling, and audit logs for patient access and appointment changes. Avoid logging patient fields or bearer tokens. Define retention/deletion controls before using real personal information.

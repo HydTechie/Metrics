@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: clinic-frontend }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: clinic-frontend } }
+  template:
+    metadata: { labels: { app: clinic-frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: REGION-docker.pkg.dev/PROJECT/clinic/frontend:RELEASE
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: clinic-frontend }
+spec:
+  selector: { app: clinic-frontend }
+  ports: [{ port: 80, targetPort: 80 }]

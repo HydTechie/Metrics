@@ -1,0 +1,98 @@
+name: Build and publish release images
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Environment configuration to use for this release
+        required: true
+        type: choice
+        options:
+          - development
+          - production
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    name: Build ${{ inputs.target_environment }} images
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      VITE_GRAPHQL_URL: ${{ vars.VITE_GRAPHQL_URL }}
+      VITE_CLINIC_TIME_ZONE: ${{ vars.CLINIC_TIME_ZONE || 'Asia/Kolkata' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate environment variables
+        shell: bash
+        run: |
+          for name in PROJECT_ID REGION WIF_PROVIDER SERVICE_ACCOUNT VITE_GRAPHQL_URL; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required GitHub Environment variable: $name"
+              exit 1
+            fi
+          done
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Test and build API
+        working-directory: backend
+        run: |
+          npm install
+          npm test -- --passWithNoTests
+          npm run build
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Build and publish API image
+        env:
+          IMAGE_TAG: ${{ inputs.target_environment }}-${{ github.sha }}
+        run: |
+          docker buildx build \
+            --file backend/Dockerfile \
+            --build-arg "NODE_ENV=${{ inputs.target_environment }}" \
+            --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/clinic/api:${IMAGE_TAG}" \
+            --push backend
+
+      - name: Build and publish frontend image
+        env:
+          IMAGE_TAG: ${{ inputs.target_environment }}-${{ github.sha }}
+        run: |
+          docker buildx build \
+            --file frontend/Dockerfile \
+            --build-arg "VITE_GRAPHQL_URL=${VITE_GRAPHQL_URL}" \
+            --build-arg "VITE_CLINIC_TIME_ZONE=${VITE_CLINIC_TIME_ZONE}" \
+            --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/clinic/frontend:${IMAGE_TAG}" \
+            --push frontend
+
+      - name: Summarize published images
+        env:
+          IMAGE_TAG: ${{ inputs.target_environment }}-${{ github.sha }}
+        run: |
+          {
+            echo "### Published release images"
+            echo "Environment: \`${{ inputs.target_environment }}\`"
+            echo "API: \`${REGION}-docker.pkg.dev/${PROJECT_ID}/clinic/api:${IMAGE_TAG}\`"
+            echo "Frontend: \`${REGION}-docker.pkg.dev/${PROJECT_ID}/clinic/frontend:${IMAGE_TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

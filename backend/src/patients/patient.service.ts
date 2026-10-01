@@ -53,10 +53,14 @@ export class PatientService implements OnModuleInit {
   async list(search = '', page = 1, limit = 10) {
     const safePage = Math.max(1, page), safeLimit = Math.min(50, Math.max(1, limit));
     const term = search.trim();
-    const filter = term ? { $or: ['firstName', 'lastName'].map(k => ({ [k]: { $regex: term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } })) } : {};
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const filter = term ? { $or: [
+      ...['firstName', 'lastName', 'email', 'phone'].map(field => ({ [field]: { $regex: escapedTerm, $options: 'i' } })),
+      { $expr: { $regexMatch: { input: { $dateToString: { format: '%Y-%m-%d', date: '$dateOfBirth' } }, regex: escapedTerm, options: 'i' } } },
+    ] } : {};
     if (term && this.redis.enabled) {
       const cutoff = this.cutoff();
-      const recent = (await this.recentCachedPatients(cutoff)).filter((patient: any) => `${patient.firstName} ${patient.lastName}`.toLowerCase().includes(term.toLowerCase()));
+      const recent = (await this.recentCachedPatients(cutoff)).filter((patient: any) => [patient.firstName, patient.lastName, patient.email, patient.phone, patient.dateOfBirth].some(value => String(value).toLowerCase().includes(term.toLowerCase())));
       const older = await this.model.find({ ...filter, createdAt: { $lt: new Date(cutoff) } }).sort({ lastName: 1, firstName: 1 }).lean();
       const items = [...recent, ...older.map(p => ({ ...p, dateOfBirth: new Date(p.dateOfBirth).toISOString() }))].sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`));
       return { items: items.slice((safePage - 1) * safeLimit, safePage * safeLimit), total: items.length, page: safePage, limit: safeLimit };

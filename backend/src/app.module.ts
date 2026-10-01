@@ -8,6 +8,7 @@ import { PatientModule } from './patients/patient.module';
 import { DoctorModule } from './doctors/doctor.module';
 import { AppointmentModule } from './appointments/appointment.module';
 import { NotificationModule } from './notifications/notification.module';
+import { CacheModule } from './cache/cache.module';
 
 const mongodbUri = process.env.MONGODB_URI;
 if (!mongodbUri) throw new Error('MONGODB_URI must be configured for the selected environment.');
@@ -18,7 +19,7 @@ if (!mongoUrl.username || !mongoUrl.password) throw new Error('MONGODB_URI must 
   imports: [
     MongooseModule.forRoot(mongodbUri),
     GraphQLModule.forRoot<ApolloDriverConfig>({ driver: ApolloDriver, autoSchemaFile: true, sortSchema: true, context: ({ req }: { req: Request }) => ({ req }) }),
-    AuthModule, PatientModule, DoctorModule, AppointmentModule, NotificationModule,
+    CacheModule, AuthModule, PatientModule, DoctorModule, AppointmentModule, NotificationModule,
   ],
 })
 export class AppModule {}

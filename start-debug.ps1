@@ -24,8 +24,14 @@ if (-not (Test-Path -LiteralPath $backendCli)) {
   throw "Backend dependencies are missing: $backendCli"
 }
 
+Write-Host 'Building backend directly through the local Nest CLI...'
+& $nodeCommand $backendCli build
+if ($LASTEXITCODE -ne 0) {
+  throw "Backend build failed with exit code $LASTEXITCODE."
+}
+
 $frontendCommand = "& '$nodeCommand' '$frontendCli' --host 0.0.0.0 --debug"
-$backendCommand = "& '$nodeCommand' '$backendCli' start --watch --debug 127.0.0.1:9229"
+$backendCommand = "& '$nodeCommand' --inspect=127.0.0.1:9229 '$(Join-Path $backend 'dist\main.js')'"
 
 Write-Host 'Starting Clinic Desk in debug mode...'
 Write-Host 'Frontend: Vite debug output at http://127.0.0.1:5173'
